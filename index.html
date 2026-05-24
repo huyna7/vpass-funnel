@@ -422,7 +422,7 @@ code{background:var(--bg2);border:1px solid var(--border);padding:1px 6px;border
 <body>
 
 <!-- Setup screen -->
-<div class="setup-screen" id="setup-screen">
+<div class="setup-screen" id="setup-screen" style="display:none">
   <div class="setup-card">
     <div class="setup-logo">
       <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
@@ -549,7 +549,7 @@ const OWNER_COLORS = [
 ];
 
 /* ─── State ─── */
-let apiUrl = localStorage.getItem(API_KEY) || '';
+let apiUrl = 'https://script.google.com/macros/s/AKfycbxmIstp8KazCdqcP8RfyLaCtw49Xym3XYNM-vgf7_G0WcH0qIsz-9SHPaVTS_GBm3ig/exec'; // hardcoded — team không cần setup
 let state  = { owners:['Linh T.','Minh N.','Hoa P.','Duc V.'], deals:[], activities:[], nextId:1 };
 function dealId(d){ return Number(d?.id) || 0; }
 function nextDealId(){
@@ -604,7 +604,9 @@ let syncTimer=null, isSaving=false;
 
 /* ─── Setup ─── */
 function checkSetup() {
-  if (apiUrl) { document.getElementById('setup-screen').style.display='none'; initApp(); }
+  // URL hardcoded — ẩn setup screen và khởi động thẳng
+  document.getElementById('setup-screen').style.display='none';
+  initApp();
 }
 async function connectSheet() {
   const url = document.getElementById('setup-url').value.trim();
@@ -1279,11 +1281,10 @@ function renderSettings(){
     </div>
     <div class="card">
       <div class="section-title">Google Sheets connection</div>
-      <div class="sub-label">Connected to:</div>
-      <code>${esc(apiUrl)}</code>
+      <div class="sub-label">Connected to Google Sheets <span style="color:var(--green)">✓</span></div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
         <button class="btn btn-sm" onclick="syncNow()">Sync now</button>
-        <button class="btn btn-sm btn-danger" onclick="disconnectSheet()">Disconnect sheet</button>
+        <!-- Disconnect disabled — URL hardcoded -->
       </div>
     </div>
     <div class="card">
