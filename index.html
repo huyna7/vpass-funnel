@@ -551,7 +551,7 @@ const STAGE_WON = 4, STAGE_REJECTED = 5, OPEN_STAGE_COUNT = 4;
 function isActiveDeal(d){ return Number(d.stage) < OPEN_STAGE_COUNT; }
 function isWonDeal(d){ return Number(d.stage) === STAGE_WON; }
 function isRejectedDeal(d){ return Number(d.stage) === STAGE_REJECTED; }
-function dealProb(d){ return STAGE_PROB[Number(d.stage)] ?? 0; }
+function dealProb(d){ return STAGE_PROB[Number(d.stage)] || 0; }
 function dealWeighted(d){ return isRejectedDeal(d) ? 0 : d.value * dealProb(d); }
 
 const BASE_EVENT_TYPES = ['Music','Sports','Corporate','Arts & Culture','Food & Drink','Comedy','Conference','Charity','Other'];
@@ -653,7 +653,7 @@ function saveCustomTemplates(templates) {
   customTemplates = templates;
   localStorage.setItem('vpass_checklist_templates', JSON.stringify(templates));
 }
-function dealId(d){ return Number(d?.id) || 0; }
+function dealId(d){ return Number(d&&d.id?d.id:0) || 0; }
 function nextDealId(){
   const maxId = state.deals.reduce((m,d)=>Math.max(m,dealId(d)),0);
   const next = Math.max(Number(state.nextId)||1, maxId+1);
@@ -692,7 +692,7 @@ function clearFilterValues(scope,key,legacyKey){
 function multiSelectHTML({scope,key,legacyKey,items,allLabel}){
   const filters=scope==='funnel'?funnelFilters:forecastFilters;
   const selected=selectedValues(filters,key,legacyKey);
-  const title=!selected.length?allLabel:(selected.length===1?items.find(x=>String(x.value)===selected[0])?.label||'1 selected':selected.length+' selected');
+  const title=!selected.length?allLabel:(selected.length===1?(function(){var f=items.find(function(x){return String(x.value)===selected[0]});return f?f.label:'1 selected'})():selected.length+' selected');
   const id=`ms-${scope}-${key}`;
   const rows=items.map(item=>`<label class="check-item"><input type="checkbox" value="${esc(item.value)}" ${selected.includes(String(item.value))?'checked':''}><span>${esc(item.label)}</span></label>`).join('');
   return `<details class="multi-dd"><summary title="${esc(title)}">${esc(title)}</summary><div class="multi-menu" id="${id}"><div class="multi-menu-head"><span>${esc(allLabel)}</span><span>${selected.length?selected.length+' selected':'Any'}</span></div><div class="multi-menu-list">${rows}</div><div class="multi-menu-actions">${selected.length?`<button type="button" onclick="clearFilterValues('${scope}','${key}','${legacyKey}')">Clear</button>`:''}<button type="button" class="apply" onclick="applyFilterValues('${scope}','${key}','${legacyKey}','${id}')">Apply</button></div></div></details>`;
@@ -750,7 +750,7 @@ async function syncNow(silent) {
     const data=await apiFetch(null,'getAll');
     if(data.error)throw new Error(data.error);
     state.deals=data.deals||state.deals;
-    state.owners=data.owners?.length?data.owners:state.owners;
+    state.owners=data.owners&&data.owners.length?data.owners:state.owners;
     // Normalize activities: đảm bảo time field luôn là string
     state.activities=(data.activities||state.activities).map(a=>({
       ...a,
@@ -1603,9 +1603,9 @@ async function saveDeal(id){
   const ownerEl = document.getElementById('f-owner');
   const closeEl = document.getElementById('f-close');
   const noteEl  = document.getElementById('f-note');
-  const newStage = stageEl ? parseInt(stageEl.value) : (existing?.stage||0);
+  const newStage = stageEl ? parseInt(stageEl.value) : (existing&&existing.stage!=null?existing.stage:0);
   // Nếu stage thay đổi, migrate checklist sang template mới nhưng giữ custom items
-  let checklistVal = existing?.checklist || '';
+  let checklistVal = existing && existing.checklist ? existing.checklist : '';
   if (!isNew && existing && newStage !== existing.stage) {
     const oldItems = getChecklist(existing);
     const customItems = oldItems.filter(i => i.custom && i.checked);
@@ -1615,16 +1615,16 @@ async function saveDeal(id){
   }
   const deal={
     id:        isNew?nextDealId():id,
-    name:      nameEl ? nameEl.value.trim() : (existing?.name||''),
-    company:   compEl ? compEl.value.trim()||'—' : (existing?.company||'—'),
-    type:      typeEl ? typeEl.value : (existing?.type||'Other'),
+    name:      nameEl ? nameEl.value.trim() : (existing&&existing.name?existing.name:''),
+    company:   compEl ? compEl.value.trim()||'—' : (existing&&existing.company?existing.company:'—'),
+    type:      typeEl ? typeEl.value : (existing&&existing.type?existing.type:'Other'),
     stage:     newStage,
-    value:     valEl ? parseInt(valEl.value)||0 : (existing?.value||0),
-    owner:     ownerEl ? parseInt(ownerEl.value) : (existing?.owner||0),
-    closeDate: closeEl ? closeEl.value||offset(todayStr(),30) : (existing?.closeDate||offset(todayStr(),30)),
-    note:      noteEl ? noteEl.value.trim() : (existing?.note||''),
+    value:     valEl ? parseInt(valEl.value)||0 : (existing&&existing.value?existing.value:0),
+    owner:     ownerEl ? parseInt(ownerEl.value) : (existing&&existing.owner!=null?existing.owner:0),
+    closeDate: closeEl ? closeEl.value||offset(todayStr(),30) : (existing&&existing.closeDate?existing.closeDate:offset(todayStr(),30)),
+    note:      noteEl ? noteEl.value.trim() : (existing&&existing.note?existing.note:''),
     checklist: checklistVal,
-    createdAt: isNew?todayStr():(existing?.createdAt||todayStr()),
+    createdAt: isNew?todayStr():(existing&&existing.createdAt?existing.createdAt:todayStr()),
   };
   const now=nowISO(); // ISO timestamp — fmtTime() sẽ parse và hiển thị relative
   const act={text:`${isNew?'New deal':'Updated'} — ${deal.name}`,sub:`${deal.company} · ${STAGES[deal.stage]}`,time:now,icon:isNew?'➕':'✏️',bg:'#ede9fe',ic:'#5b21b6',owner:deal.owner};
@@ -1720,7 +1720,7 @@ function toggleCheckItem(dealId, itemIndex, checked) {
   const prog = checklistProgress(d);
   const bar = document.getElementById('cp-bar');
   if (bar && prog) bar.style.width = prog.pct + '%';
-  const pctEl = bar?.parentElement?.nextElementSibling;
+  const pctEl = bar && bar.parentElement ? bar.parentElement.nextElementSibling : null;
   if (pctEl && prog) pctEl.textContent = prog.pct + '%';
   // Auto-save sau 1s debounce
   clearTimeout(window._checklistSaveTimer);
