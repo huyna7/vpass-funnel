@@ -403,6 +403,44 @@ input[type=range]::-webkit-slider-thumb{
 input[type=range]::-webkit-slider-thumb:active{transform:scale(1.15)}
 input[type=range]:disabled{opacity:.35;cursor:not-allowed}
 
+/* ── Checklist in modal ── */
+.modal-tabs{display:flex;gap:2px;margin-bottom:14px;background:var(--bg2);padding:3px;border-radius:8px}
+.modal-tab{flex:1;padding:6px;font-size:12px;font-weight:500;border:none;background:transparent;border-radius:6px;cursor:pointer;color:var(--text2);font-family:inherit;transition:all .15s}
+.modal-tab.active{background:var(--bg);color:var(--text);box-shadow:var(--shadow-sm)}
+.checklist-wrap{display:flex;flex-direction:column;gap:6px}
+.checklist-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);transition:background .15s;cursor:pointer}
+.checklist-item:hover{background:var(--bg2)}
+.checklist-item.done{opacity:.6}
+.checklist-item.done .ci-label{text-decoration:line-through;color:var(--text3)}
+.checklist-item input[type=checkbox]{width:16px;height:16px;min-width:16px;accent-color:var(--green);cursor:pointer;flex-shrink:0}
+.ci-label{font-size:13px;color:var(--text);flex:1;line-height:1.4}
+.ci-custom{font-size:10px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:var(--text3);padding:1px 5px;border-radius:4px;background:var(--bg2)}
+.checklist-progress{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.cp-bar-wrap{flex:1;background:var(--bg2);border-radius:3px;height:5px}
+.cp-bar{height:5px;border-radius:3px;background:var(--green);transition:width .3s}
+.cp-label{font-size:11px;font-weight:600;color:var(--text2);white-space:nowrap;min-width:36px;text-align:right}
+.add-custom-row{display:flex;gap:6px;margin-top:8px}
+.add-custom-row input{flex:1;padding:7px 10px;font-size:12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;outline:none}
+.add-custom-row input:focus{border-color:var(--blue)}
+/* Progress dot on deal card */
+.progress-dot{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:var(--text3)}
+.progress-dot-bar{height:3px;border-radius:2px;background:var(--bg3);flex:1;min-width:32px;overflow:hidden}
+.progress-dot-fill{height:3px;border-radius:2px;background:var(--green);transition:width .3s}
+
+/* ── Checklist template editor ── */
+.cl-editor-stage{margin-bottom:20px;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden}
+.cl-editor-header{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg2);cursor:pointer;user-select:none}
+.cl-editor-header-left{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
+.cl-editor-body{padding:12px 14px;display:none;flex-direction:column;gap:6px}
+.cl-editor-body.open{display:flex}
+.cl-item-row{display:flex;align-items:center;gap:8px}
+.cl-item-row input{flex:1;padding:7px 10px;font-size:12px;border:1px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--text);font-family:inherit;outline:none}
+.cl-item-row input:focus{border-color:var(--blue)}
+.cl-del-btn{width:28px;height:28px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text3);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .15s}
+.cl-del-btn:hover{background:var(--red-l);color:var(--red);border-color:var(--red)}
+.cl-add-btn{padding:6px 12px;font-size:12px;font-weight:500;border-radius:7px;border:1px dashed var(--border2);background:transparent;color:var(--text2);cursor:pointer;font-family:inherit;transition:all .15s;text-align:left}
+.cl-add-btn:hover{background:var(--bg2);border-style:solid}
+
 /* ── Misc ── */
 hr.divider{border:none;border-top:1px solid var(--border);margin:18px 0}
 .empty-state{font-size:13px;color:var(--text3);padding:20px 4px;text-align:center;line-height:1.6}
@@ -548,9 +586,73 @@ const OWNER_COLORS = [
   {bg:'#fce7f3',tc:'#831843'},{bg:'#fef9c3',tc:'#713f12'},
 ];
 
+/* ─── Stage checklist templates ─── */
+const STAGE_CHECKLIST = [
+  // 0 Prospecting
+  ['Event type & scale identified','Decision maker confirmed','Intro email / message sent','Ticketing need validated'],
+  // 1 Demo Booked
+  ['Demo scheduled & confirmed','Deck / demo account prepared','Client event researched','Reminder sent 24h before'],
+  // 2 Proposal Sent
+  ['Proposal sent on time','Client receipt confirmed','Followed up after 2 days','Questions addressed'],
+  // 3 Negotiation
+  ['Pricing / commission agreed','Contract terms confirmed','Draft contract sent','Waiting for signature / signed'],
+  // 4 Closed Won
+  ['Contract fully signed','Technical onboarding done','Event set up on system','Go-live date confirmed'],
+  // 5 Rejected
+  ['Rejection reason noted','Follow-up scheduled (if any)'],
+];
+
+// Parse checklist từ deal.checklist (JSON string) hoặc tạo mới từ template
+function getChecklist(deal) {
+  const stage = Number(deal.stage) || 0;
+  const template = getTemplate(stage);
+  if (!deal.checklist) {
+    // Tạo checklist mới từ template, tất cả unchecked
+    return template.map(label => ({ label, checked: false }));
+  }
+  try {
+    const saved = JSON.parse(deal.checklist);
+    // Merge: giữ trạng thái checked đã lưu, thêm item mới từ template nếu có
+    const merged = template.map(label => {
+      const found = saved.find(s => s.label === label);
+      return { label, checked: found ? !!found.checked : false };
+    });
+    // Giữ lại custom items không có trong template
+    saved.forEach(s => {
+      if (s.custom && !merged.find(m => m.label === s.label)) {
+        merged.push({ label: s.label, checked: !!s.checked, custom: true });
+      }
+    });
+    return merged;
+  } catch(e) { return template.map(label => ({ label, checked: false })); }
+}
+
+function checklistProgress(deal) {
+  const items = getChecklist(deal);
+  if (!items.length) return null;
+  const done = items.filter(i => i.checked).length;
+  return { done, total: items.length, pct: Math.round(done / items.length * 100) };
+}
+
 /* ─── State ─── */
 let apiUrl = 'https://script.google.com/macros/s/AKfycbxmIstp8KazCdqcP8RfyLaCtw49Xym3XYNM-vgf7_G0WcH0qIsz-9SHPaVTS_GBm3ig/exec'; // hardcoded — team không cần setup
 let state  = { owners:['Linh T.','Minh N.','Hoa P.','Duc V.'], deals:[], activities:[], nextId:1 };
+
+// Custom checklist templates — override STAGE_CHECKLIST nếu đã customize
+// Lưu trong localStorage (mỗi browser) và sync qua Sheets Settings
+let customTemplates = (()=>{
+  try { const s=localStorage.getItem('vpass_checklist_templates'); return s?JSON.parse(s):null; } catch(e){ return null; }
+})();
+
+function getTemplate(stageIndex) {
+  if (customTemplates && customTemplates[stageIndex]) return customTemplates[stageIndex];
+  return STAGE_CHECKLIST[stageIndex] || [];
+}
+
+function saveCustomTemplates(templates) {
+  customTemplates = templates;
+  localStorage.setItem('vpass_checklist_templates', JSON.stringify(templates));
+}
 function dealId(d){ return Number(d?.id) || 0; }
 function nextDealId(){
   const maxId = state.deals.reduce((m,d)=>Math.max(m,dealId(d)),0);
@@ -560,7 +662,7 @@ function nextDealId(){
 }
 function normalizeDealIds(){
   // Google Sheets may return null for empty cells; coerce all ids to integers
-  state.deals.forEach(d=>{ d.id=dealId(d); d.stage=Number(d.stage)||0; d.value=Number(d.value)||0; d.owner=Number(d.owner)||0; });
+  state.deals.forEach(d=>{ d.id=dealId(d); d.stage=Number(d.stage)||0; d.value=Number(d.value)||0; d.owner=Number(d.owner)||0; d.checklist=d.checklist||''; });
   const maxId = state.deals.reduce((m,d)=>Math.max(m,dealId(d)),0);
   state.nextId = Math.max(Number(state.nextId)||1, maxId+1);
 }
@@ -854,6 +956,7 @@ function renderFunnel(){
       </div>
       <div class="deal-company"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>${esc(d.company)}</div>
       ${closeTag(d.closeDate,d.stage)}
+      ${(()=>{ const p=checklistProgress(d); if(!p||p.total===0)return''; return `<div class="progress-dot"><div class="progress-dot-bar"><div class="progress-dot-fill" style="width:${p.pct}%"></div></div><span>${p.done}/${p.total}</span></div>`; })()}
       <div class="deal-bottom"><div class="deal-value">${fmt(d.value)}</div>${avatarHTML(d.owner,false)}</div>
     </div>`).join('');
     const total=sd.reduce((s,d)=>s+d.value,0);
@@ -1293,7 +1396,93 @@ function renderSettings(){
         <button class="btn" onclick="exportCSV()">Export deals as CSV</button>
         <button class="btn" onclick="exportJSON()">Export backup (JSON)</button>
       </div>
+    </div>
+    <div class="card">
+      <div class="section-title">Checklist templates</div>
+      <div class="sub-label">Customize the default checklist for each stage. Applies to new deals and deals without a saved checklist. Existing deal checklists are not affected.</div>
+      <div id="cl-editor-root">${renderChecklistEditor()}</div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveChecklistTemplates()">Save templates</button>
+        <button class="btn" onclick="resetChecklistTemplates()">Reset to defaults</button>
+      </div>
+    </div>\`;
+}
+
+/* ─── Checklist template editor ─── */
+function renderChecklistEditor() {
+  return STAGES.map((stageName, si) => {
+    const items = getTemplate(si);
+    const itemRows = items.map((label, ii) =>
+      `<div class="cl-item-row" id="cl-row-${si}-${ii}">
+        <input type="text" value="${esc(label)}" id="cl-input-${si}-${ii}" placeholder="Checklist item…">
+        <button class="cl-del-btn" onclick="deleteTemplateItem(${si},${ii})" title="Remove">×</button>
+      </div>`
+    ).join('');
+    return `<div class="cl-editor-stage">
+      <div class="cl-editor-header" onclick="toggleClEditor(${si})">
+        <div class="cl-editor-header-left">
+          <span style="width:10px;height:10px;border-radius:50%;background:${STAGE_COLORS[si]};display:inline-block;flex-shrink:0"></span>
+          <span>${stageName}</span>
+          <span style="font-size:11px;color:var(--text3);font-weight:400">${items.length} items</span>
+        </div>
+        <span id="cl-chevron-${si}" style="font-size:12px;color:var(--text3)">▸</span>
+      </div>
+      <div class="cl-editor-body" id="cl-body-${si}">
+        <div id="cl-items-${si}">${itemRows}</div>
+        <button class="cl-add-btn" onclick="addTemplateItem(${si})">+ Add item</button>
+      </div>
     </div>`;
+  }).join('');
+}
+
+function toggleClEditor(si) {
+  const body = document.getElementById('cl-body-'+si);
+  const chevron = document.getElementById('cl-chevron-'+si);
+  if (!body) return;
+  const isOpen = body.classList.toggle('open');
+  if (chevron) chevron.textContent = isOpen ? '▾' : '▸';
+}
+
+function addTemplateItem(si) {
+  const container = document.getElementById('cl-items-'+si);
+  if (!container) return;
+  const ii = container.querySelectorAll('.cl-item-row').length;
+  const div = document.createElement('div');
+  div.className = 'cl-item-row';
+  div.id = `cl-row-${si}-${ii}`;
+  div.innerHTML = `<input type="text" value="" id="cl-input-${si}-${ii}" placeholder="New checklist item…">
+    <button class="cl-del-btn" onclick="deleteTemplateItem(${si},${ii})" title="Remove">×</button>`;
+  container.appendChild(div);
+  div.querySelector('input').focus();
+}
+
+function deleteTemplateItem(si, ii) {
+  const row = document.getElementById(`cl-row-${si}-${ii}`);
+  if (row) row.remove();
+}
+
+function saveChecklistTemplates() {
+  const templates = STAGES.map((_, si) => {
+    const container = document.getElementById('cl-items-'+si);
+    if (!container) return getTemplate(si);
+    return [...container.querySelectorAll('input[type=text]')]
+      .map(inp => inp.value.trim())
+      .filter(Boolean);
+  });
+  saveCustomTemplates(templates);
+  // Re-render editor để cập nhật item count
+  const root = document.getElementById('cl-editor-root');
+  if (root) root.innerHTML = renderChecklistEditor();
+  toast('✅ Checklist templates saved.');
+}
+
+function resetChecklistTemplates() {
+  if (!confirm('Reset all checklist templates to default?')) return;
+  customTemplates = null;
+  localStorage.removeItem('vpass_checklist_templates');
+  const root = document.getElementById('cl-editor-root');
+  if (root) root.innerHTML = renderChecklistEditor();
+  toast('Reset to defaults.');
 }
 
 function disconnectSheet(){
@@ -1336,6 +1525,16 @@ function openEdit(id){
   const ownerOpts=state.owners.map((o,i)=>`<option value="${i}" ${i==d.owner?'selected':''}>${esc(o)}</option>`).join('');
   const dd=daysUntil(d.closeDate);
   const urgLabel=isActiveDeal(d)?(dd<0?`<span class="close-tag ct-overdue">Overdue ${Math.abs(dd)}d</span>`:`<span class="close-tag ct-ok">Close in ${dd}d</span>`):(isRejectedDeal(d)?`<span class="close-tag ct-overdue">Rejected</span>`:`<span class="close-tag ct-future">Won</span>`);
+  const checkItems = getChecklist(d);
+  const prog = checklistProgress(d);
+  const checkHTML = checkItems.map((item,i) =>
+    `<div class="checklist-item${item.checked?' done':''}">
+      <input type="checkbox" id="ck-${i}" ${item.checked?'checked':''} onchange="toggleCheckItem(${d.id},${i},this.checked)">
+      <span class="ci-label" onclick="editCheckItemLabel(${d.id},${i},this)" style="cursor:text;flex:1">${esc(item.label)}</span>
+      ${item.custom?'<span class="ci-custom">Custom</span>':''}
+      <button onclick="removeCheckItem(${d.id},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0" title="Remove">×</button>
+    </div>`
+  ).join('');
   showModal(`<div class="modal">
     <h3>${esc(d.name)}</h3>
     <div class="badge-row"><span ${pillStyle(d.type)}>${esc(d.type)}</span><span style="font-size:12px;color:var(--text2)">${esc(d.company)}</span>${urgLabel}</div>
@@ -1345,19 +1544,43 @@ function openEdit(id){
       <div class="info-cell"><div class="lbl">Weighted</div><div class="val">${fmt(dealWeighted(d))}</div></div>
     </div>
     <hr class="modal-divider">
-    <div class="form-group"><label>Event / client name</label><input id="f-name" value="${esc(d.name)}"></div>
-    <div class="form-group"><label>Company / organizer</label><input id="f-company" value="${esc(d.company)}"></div>
-    <div class="form-row">
-      <div class="form-group"><label>Event type</label><select id="f-type">${typeOpts}</select></div>
-      <div class="form-group"><label>Deal value (VND)</label><input id="f-value" type="number" value="${d.value}"></div>
+    <!-- Tabs -->
+    <div class="modal-tabs">
+      <button class="modal-tab active" onclick="switchModalTab('checklist',this)" type="button">✅ Checklist <span style="font-size:11px;opacity:.7">${prog?prog.done+'/'+prog.total:''}</span></button>
+      <button class="modal-tab" onclick="switchModalTab('details',this)" type="button">📋 Details</button>
+      <button class="modal-tab" onclick="switchModalTab('notes',this)" type="button">📝 Notes</button>
     </div>
-    <div class="form-row">
-      <div class="form-group"><label>Stage</label><select id="f-stage">${stageOpts}</select></div>
-      <div class="form-group"><label>Assigned to</label><select id="f-owner">${ownerOpts}</select></div>
+    <!-- Tab: Checklist -->
+    <div id="modal-tab-checklist">
+      <div class="checklist-progress">
+        <div class="cp-bar-wrap"><div class="cp-bar" id="cp-bar" style="width:${prog?prog.pct:0}%"></div></div>
+        <span class="cp-label">${prog?prog.pct:0}%</span>
+      </div>
+      <div class="checklist-wrap" id="checklist-wrap">${checkHTML}</div>
+      <div class="add-custom-row">
+        <input type="text" id="custom-item-input" placeholder="Add custom item…" onkeydown="if(event.key==='Enter')addCustomItem(${d.id})">
+        <button class="btn btn-sm" type="button" onclick="addCustomItem(${d.id})">Add</button>
+      </div>
     </div>
-    <div class="form-group"><label>Expected close date</label><input id="f-close" type="date" value="${d.closeDate}"></div>
-    <div class="form-group"><label>Notes</label><textarea id="f-note">${esc(d.note||'')}</textarea></div>
-    <div class="modal-actions">
+    <!-- Tab: Details -->
+    <div id="modal-tab-details" style="display:none">
+      <div class="form-group"><label>Event / client name</label><input id="f-name" value="${esc(d.name)}"></div>
+      <div class="form-group"><label>Company / organizer</label><input id="f-company" value="${esc(d.company)}"></div>
+      <div class="form-row">
+        <div class="form-group"><label>Event type</label><select id="f-type">${typeOpts}</select></div>
+        <div class="form-group"><label>Deal value (VND)</label><input id="f-value" type="number" value="${d.value}"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Stage</label><select id="f-stage" onchange="onModalStageChange(${d.id},this.value)">${stageOpts}</select></div>
+        <div class="form-group"><label>Assigned to</label><select id="f-owner">${ownerOpts}</select></div>
+      </div>
+      <div class="form-group"><label>Expected close date</label><input id="f-close" type="date" value="${d.closeDate}"></div>
+    </div>
+    <!-- Tab: Notes -->
+    <div id="modal-tab-notes" style="display:none">
+      <div class="form-group" style="margin-bottom:0"><label>Notes</label><textarea id="f-note" style="min-height:120px">${esc(d.note||'')}</textarea></div>
+    </div>
+    <div class="modal-actions" style="margin-top:14px">
       <button class="btn btn-danger" onclick="deleteDeal(${d.id})">Delete</button>
       <button class="btn" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveDeal(${d.id})">Save changes</button>
@@ -1371,17 +1594,37 @@ async function saveDeal(id){
   const name=document.getElementById('f-name').value.trim();
   if(!name){alert('Please enter a deal name.');return;}
   const existing=isNew?null:state.deals.find(d=>dealId(d)===id);
+  // Đọc stage từ modal nếu có (Details tab), fallback về existing stage
+  const stageEl = document.getElementById('f-stage');
+  const nameEl  = document.getElementById('f-name');
+  const compEl  = document.getElementById('f-company');
+  const typeEl  = document.getElementById('f-type');
+  const valEl   = document.getElementById('f-value');
+  const ownerEl = document.getElementById('f-owner');
+  const closeEl = document.getElementById('f-close');
+  const noteEl  = document.getElementById('f-note');
+  const newStage = stageEl ? parseInt(stageEl.value) : (existing?.stage||0);
+  // Nếu stage thay đổi, migrate checklist sang template mới nhưng giữ custom items
+  let checklistVal = existing?.checklist || '';
+  if (!isNew && existing && newStage !== existing.stage) {
+    const oldItems = getChecklist(existing);
+    const customItems = oldItems.filter(i => i.custom && i.checked);
+    const newItems = getTemplate(newStage).map(label => ({ label, checked: false }));
+    customItems.forEach(c => newItems.push(c));
+    checklistVal = JSON.stringify(newItems);
+  }
   const deal={
-    id:       isNew?nextDealId():id,
-    name,
-    company:  document.getElementById('f-company').value.trim()||'—',
-    type:     document.getElementById('f-type').value,
-    stage:    parseInt(document.getElementById('f-stage').value),
-    value:    parseInt(document.getElementById('f-value').value)||0,
-    owner:    parseInt(document.getElementById('f-owner').value),
-    closeDate:document.getElementById('f-close').value||offset(todayStr(),30),
-    note:     document.getElementById('f-note').value.trim(),
-    createdAt:isNew?todayStr():(existing?.createdAt||todayStr()),
+    id:        isNew?nextDealId():id,
+    name:      nameEl ? nameEl.value.trim() : (existing?.name||''),
+    company:   compEl ? compEl.value.trim()||'—' : (existing?.company||'—'),
+    type:      typeEl ? typeEl.value : (existing?.type||'Other'),
+    stage:     newStage,
+    value:     valEl ? parseInt(valEl.value)||0 : (existing?.value||0),
+    owner:     ownerEl ? parseInt(ownerEl.value) : (existing?.owner||0),
+    closeDate: closeEl ? closeEl.value||offset(todayStr(),30) : (existing?.closeDate||offset(todayStr(),30)),
+    note:      noteEl ? noteEl.value.trim() : (existing?.note||''),
+    checklist: checklistVal,
+    createdAt: isNew?todayStr():(existing?.createdAt||todayStr()),
   };
   const now=nowISO(); // ISO timestamp — fmtTime() sẽ parse và hiển thị relative
   const act={text:`${isNew?'New deal':'Updated'} — ${deal.name}`,sub:`${deal.company} · ${STAGES[deal.stage]}`,time:now,icon:isNew?'➕':'✏️',bg:'#ede9fe',ic:'#5b21b6',owner:deal.owner};
@@ -1453,6 +1696,125 @@ function download(name,content,type){ const a=document.createElement('a');a.href
 /* ─── Modal helpers ─── */
 function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
 function showModal(html){ document.getElementById('modal-root').innerHTML=`<div class="modal-overlay" onclick="if(event.target===this)closeModal()">${html}</div>`; }
+
+function switchModalTab(tab, btn) {
+  ['checklist','details','notes'].forEach(t => {
+    const el = document.getElementById('modal-tab-'+t);
+    if (el) el.style.display = t===tab ? '' : 'none';
+  });
+  document.querySelectorAll('.modal-tab').forEach(b => b.classList.toggle('active', b===btn));
+}
+
+function toggleCheckItem(dealId, itemIndex, checked) {
+  const d = state.deals.find(x => dealId(x)===dealId);
+  if (!d) return;
+  const items = getChecklist(d);
+  if (items[itemIndex]) items[itemIndex].checked = checked;
+  d.checklist = JSON.stringify(items);
+  // Update UI
+  const wrap = document.getElementById('checklist-wrap');
+  if (wrap) {
+    const label = wrap.querySelectorAll('.checklist-item')[itemIndex];
+    if (label) label.classList.toggle('done', checked);
+  }
+  const prog = checklistProgress(d);
+  const bar = document.getElementById('cp-bar');
+  if (bar && prog) bar.style.width = prog.pct + '%';
+  const pctEl = bar?.parentElement?.nextElementSibling;
+  if (pctEl && prog) pctEl.textContent = prog.pct + '%';
+  // Auto-save sau 1s debounce
+  clearTimeout(window._checklistSaveTimer);
+  window._checklistSaveTimer = setTimeout(() => { pushDeals(); }, 1000);
+}
+
+function addCustomItem(dealId) {
+  const input = document.getElementById('custom-item-input');
+  if (!input) return;
+  const label = input.value.trim();
+  if (!label) return;
+  const d = state.deals.find(x => dealId(x)===dealId);
+  if (!d) return;
+  const items = getChecklist(d);
+  items.push({ label, checked: false, custom: true });
+  d.checklist = JSON.stringify(items);
+  input.value = '';
+  // Re-render checklist wrap
+  const wrap = document.getElementById('checklist-wrap');
+  if (wrap) {
+    const i = items.length - 1;
+    const div = document.createElement('label');
+    div.className = 'checklist-item';
+    div.innerHTML = `<input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dealId},${i},this.checked)"><span class="ci-label">${esc(label)}</span><span class="ci-custom">Custom</span>`;
+    wrap.appendChild(div);
+  }
+  clearTimeout(window._checklistSaveTimer);
+  window._checklistSaveTimer = setTimeout(() => { pushDeals(); }, 1000);
+}
+
+function removeCheckItem(dealId, itemIndex) {
+  const d = state.deals.find(x => x.id===dealId);
+  if (!d) return;
+  const items = getChecklist(d);
+  items.splice(itemIndex, 1);
+  d.checklist = JSON.stringify(items);
+  // Re-render checklist wrap
+  const wrap = document.getElementById('checklist-wrap');
+  if (wrap) wrap.innerHTML = items.map((item,i) =>
+    `<div class="checklist-item${item.checked?' done':''}">
+      <input type="checkbox" id="ck-${i}" ${item.checked?'checked':''} onchange="toggleCheckItem(${dealId},${i},this.checked)">
+      <span class="ci-label" onclick="editCheckItemLabel(${dealId},${i},this)" style="cursor:text;flex:1">${esc(item.label)}</span>
+      ${item.custom?'<span class="ci-custom">Custom</span>':''}
+      <button onclick="removeCheckItem(${dealId},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
+    </div>`
+  ).join('');
+  clearTimeout(window._checklistSaveTimer);
+  window._checklistSaveTimer = setTimeout(() => pushDeals(), 1000);
+}
+
+function editCheckItemLabel(dealId, itemIndex, spanEl) {
+  const current = spanEl.textContent;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.style.cssText = 'flex:1;padding:2px 6px;font-size:13px;border:1px solid var(--blue);border-radius:5px;font-family:inherit;outline:none;background:var(--bg);color:var(--text)';
+  spanEl.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const newLabel = input.value.trim() || current;
+    const d = state.deals.find(x => x.id===dealId);
+    if (d) {
+      const items = getChecklist(d);
+      if (items[itemIndex]) items[itemIndex].label = newLabel;
+      d.checklist = JSON.stringify(items);
+      clearTimeout(window._checklistSaveTimer);
+      window._checklistSaveTimer = setTimeout(() => pushDeals(), 1000);
+    }
+    const span = document.createElement('span');
+    span.className = 'ci-label';
+    span.style.cssText = 'cursor:text;flex:1';
+    span.textContent = newLabel;
+    span.onclick = () => editCheckItemLabel(dealId, itemIndex, span);
+    input.replaceWith(span);
+  };
+  input.onblur = commit;
+  input.onkeydown = e => { if(e.key==='Enter') commit(); if(e.key==='Escape'){ input.value=current; commit(); } };
+}
+
+function onModalStageChange(dealId, newStage) {
+  // Khi đổi stage trong modal, cập nhật tab Checklist với template mới
+  const d = state.deals.find(x => dealId(x)===dealId);
+  if (!d) return;
+  const tempDeal = { ...d, stage: parseInt(newStage), checklist: '' };
+  const items = getChecklist(tempDeal);
+  const wrap = document.getElementById('checklist-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = items.map((item,i) =>
+    `<label class="checklist-item"><input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dealId},${i},this.checked)"><span class="ci-label">${esc(item.label)}</span></label>`
+  ).join('');
+  const bar = document.getElementById('cp-bar');
+  if (bar) bar.style.width = '0%';
+}
 
 /* ─── Utils ─── */
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
