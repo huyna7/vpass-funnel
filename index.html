@@ -1591,9 +1591,12 @@ function openEdit(id){
 async function saveDeal(id){
   const isNew=(id==null||id===undefined);
   id=isNew?null:Number(id);
-  const name=document.getElementById('f-name').value.trim();
-  if(!name){alert('Please enter a deal name.');return;}
   const existing=isNew?null:state.deals.find(d=>dealId(d)===id);
+  // f-name chỉ có trong DOM khi tab Details đang active
+  // Nếu đang ở tab Checklist/Notes thì đọc từ existing
+  const nameEl2=document.getElementById('f-name');
+  const name=(nameEl2?nameEl2.value.trim():'') || (existing&&existing.name?existing.name:'');
+  if(!name){alert('Please enter a deal name.');return;}
   // Đọc stage từ modal nếu có (Details tab), fallback về existing stage
   const stageEl = document.getElementById('f-stage');
   const nameEl  = document.getElementById('f-name');
@@ -1605,9 +1608,12 @@ async function saveDeal(id){
   const noteEl  = document.getElementById('f-note');
   const newStage = stageEl ? parseInt(stageEl.value) : (existing&&existing.stage!=null?existing.stage:0);
   // Nếu stage thay đổi, migrate checklist sang template mới nhưng giữ custom items
-  let checklistVal = existing && existing.checklist ? existing.checklist : '';
-  if (!isNew && existing && newStage !== existing.stage) {
-    const oldItems = getChecklist(existing);
+  // Lấy checklist từ state.deals (đã được toggleCheckItem cập nhật real-time)
+  // KHÔNG dùng existing trực tiếp vì existing là snapshot cũ trước khi tick checkbox
+  const currentDeal = isNew ? null : state.deals.find(d=>dealId(d)===id);
+  let checklistVal = currentDeal && currentDeal.checklist ? currentDeal.checklist : '';
+  if (!isNew && currentDeal && newStage !== (currentDeal.stage||0)) {
+    const oldItems = getChecklist(currentDeal);
     const customItems = oldItems.filter(i => i.custom && i.checked);
     const newItems = getTemplate(newStage).map(label => ({ label, checked: false }));
     customItems.forEach(c => newItems.push(c));
@@ -1705,8 +1711,8 @@ function switchModalTab(tab, btn) {
   document.querySelectorAll('.modal-tab').forEach(b => b.classList.toggle('active', b===btn));
 }
 
-function toggleCheckItem(dealId, itemIndex, checked) {
-  const d = state.deals.find(x => dealId(x)===dealId);
+function toggleCheckItem(dId, itemIndex, checked) {
+  const d = state.deals.find(x => dealId(x)===dId);
   if (!d) return;
   const items = getChecklist(d);
   if (items[itemIndex]) items[itemIndex].checked = checked;
@@ -1724,15 +1730,15 @@ function toggleCheckItem(dealId, itemIndex, checked) {
   if (pctEl && prog) pctEl.textContent = prog.pct + '%';
   // Auto-save sau 1s debounce
   clearTimeout(window._checklistSaveTimer);
-  window._checklistSaveTimer = setTimeout(() => { pushDeals(); }, 1000);
+  window._checklistSaveTimer = setTimeout(function() { pushDeals(); }, 1000);
 }
 
-function addCustomItem(dealId) {
+function addCustomItem(dId) {
   const input = document.getElementById('custom-item-input');
   if (!input) return;
   const label = input.value.trim();
   if (!label) return;
-  const d = state.deals.find(x => dealId(x)===dealId);
+  const d = state.deals.find(x => dealId(x)===dId);
   if (!d) return;
   const items = getChecklist(d);
   items.push({ label, checked: false, custom: true });
@@ -1744,15 +1750,15 @@ function addCustomItem(dealId) {
     const i = items.length - 1;
     const div = document.createElement('label');
     div.className = 'checklist-item';
-    div.innerHTML = `<input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dealId},${i},this.checked)"><span class="ci-label">${esc(label)}</span><span class="ci-custom">Custom</span>`;
+    div.innerHTML = `<input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dId},${i},this.checked)"><span class="ci-label">${esc(label)}</span><span class="ci-custom">Custom</span>`;
     wrap.appendChild(div);
   }
   clearTimeout(window._checklistSaveTimer);
   window._checklistSaveTimer = setTimeout(() => { pushDeals(); }, 1000);
 }
 
-function removeCheckItem(dealId, itemIndex) {
-  const d = state.deals.find(x => x.id===dealId);
+function removeCheckItem(dId, itemIndex) {
+  const d = state.deals.find(x => dealId(x)===dId);
   if (!d) return;
   const items = getChecklist(d);
   items.splice(itemIndex, 1);
@@ -1771,7 +1777,7 @@ function removeCheckItem(dealId, itemIndex) {
   window._checklistSaveTimer = setTimeout(() => pushDeals(), 1000);
 }
 
-function editCheckItemLabel(dealId, itemIndex, spanEl) {
+function editCheckItemLabel(dId, itemIndex, spanEl) {
   const current = spanEl.textContent;
   const input = document.createElement('input');
   input.type = 'text';
@@ -1782,7 +1788,7 @@ function editCheckItemLabel(dealId, itemIndex, spanEl) {
   input.select();
   const commit = () => {
     const newLabel = input.value.trim() || current;
-    const d = state.deals.find(x => x.id===dealId);
+    const d = state.deals.find(x => dealId(x)===dId);
     if (d) {
       const items = getChecklist(d);
       if (items[itemIndex]) items[itemIndex].label = newLabel;
@@ -1794,16 +1800,16 @@ function editCheckItemLabel(dealId, itemIndex, spanEl) {
     span.className = 'ci-label';
     span.style.cssText = 'cursor:text;flex:1';
     span.textContent = newLabel;
-    span.onclick = () => editCheckItemLabel(dealId, itemIndex, span);
+    span.onclick = () => editCheckItemLabel(dId, itemIndex, span);
     input.replaceWith(span);
   };
   input.onblur = commit;
   input.onkeydown = e => { if(e.key==='Enter') commit(); if(e.key==='Escape'){ input.value=current; commit(); } };
 }
 
-function onModalStageChange(dealId, newStage) {
+function onModalStageChange(dId, newStage) {
   // Khi đổi stage trong modal, cập nhật tab Checklist với template mới
-  const d = state.deals.find(x => dealId(x)===dealId);
+  const d = state.deals.find(x => dealId(x)===dId);
   if (!d) return;
   const tempDeal = { ...d, stage: parseInt(newStage), checklist: '' };
   const items = getChecklist(tempDeal);
