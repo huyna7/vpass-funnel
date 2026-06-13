@@ -1737,10 +1737,10 @@ async function saveDeal(id){
   const noteEl  = document.getElementById('f-note');
   const newStage = stageEl ? parseInt(stageEl.value) : (existing&&existing.stage!=null?existing.stage:0);
   // Nếu stage thay đổi, migrate checklist sang template mới nhưng giữ custom items
-  // Lấy checklist từ state.deals (đã được toggleCheckItem cập nhật real-time)
-  // KHÔNG dùng existing trực tiếp vì existing là snapshot cũ trước khi tick checkbox
+  // Đọc checklist từ state.deals — đã được update bởi toggleCheckItem/removeCheckItem/addCustomItem
   const currentDeal = isNew ? null : state.deals.find(d=>dealId(d)===id);
-  let checklistVal = currentDeal && currentDeal.checklist ? currentDeal.checklist : '';
+  // Ưu tiên currentDeal.checklist (đã update) hơn existing.checklist (snapshot cũ)
+  let checklistVal = (currentDeal && currentDeal.checklist !== undefined) ? (currentDeal.checklist || '') : (existing && existing.checklist ? existing.checklist : '');
   if (!isNew && currentDeal && newStage !== (currentDeal.stage||0)) {
     const oldItems = getChecklist(currentDeal);
     const customItems = oldItems.filter(i => i.custom && i.checked);
@@ -1890,7 +1890,8 @@ function addCustomItem(dId) {
     const i = items.length - 1;
     const div = document.createElement('label');
     div.className = 'checklist-item';
-    div.innerHTML = `<input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dId},${i},this.checked)"><span class="ci-label">${esc(label)}</span><span class="ci-custom">Custom</span>`;
+    div.innerHTML = `<div class="checklist-item"><input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dId},${i},this.checked)"><span class="ci-label" onclick="editCheckItemLabel(${dId},${i},this)" style="cursor:text;flex:1">${esc(label)}</span><span class="ci-custom">Custom</span><button onclick="removeCheckItem(${dId},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">×</button></div>`;
+    div.className = '';
     wrap.appendChild(div);
   }
   window._checklistDirty = true;
@@ -1907,10 +1908,10 @@ function removeCheckItem(dId, itemIndex) {
   const wrap = document.getElementById('checklist-wrap');
   if (wrap) wrap.innerHTML = items.map((item,i) =>
     `<div class="checklist-item${item.checked?' done':''}">
-      <input type="checkbox" id="ck-${i}" ${item.checked?'checked':''} onchange="toggleCheckItem(${dealId},${i},this.checked)">
-      <span class="ci-label" onclick="editCheckItemLabel(${dealId},${i},this)" style="cursor:text;flex:1">${esc(item.label)}</span>
+      <input type="checkbox" id="ck-${i}" ${item.checked?'checked':''} onchange="toggleCheckItem(${dId},${i},this.checked)">
+      <span class="ci-label" onclick="editCheckItemLabel(${dId},${i},this)" style="cursor:text;flex:1">${esc(item.label)}</span>
       ${item.custom?'<span class="ci-custom">Custom</span>':''}
-      <button onclick="removeCheckItem(${dealId},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
+      <button onclick="removeCheckItem(${dId},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
     </div>`
   ).join('');
   window._checklistDirty = true;
