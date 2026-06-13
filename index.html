@@ -343,6 +343,26 @@ button{font-family:inherit;cursor:pointer}
 .legend-dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
 .chart-wrap{position:relative;width:100%}
 
+/* ── Login screen ── */
+.login-screen{position:fixed;inset:0;background:var(--bg3);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.login-card{background:var(--bg);border:1px solid var(--border2);border-radius:20px;padding:36px;width:400px;max-width:100%;box-shadow:var(--shadow)}
+.login-logo{width:48px;height:48px;border-radius:13px;background:var(--accent);display:flex;align-items:center;justify-content:center;margin:0 auto 20px}
+.login-logo svg{width:24px;height:24px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.login-title{font-size:22px;font-weight:600;letter-spacing:-0.03em;text-align:center;margin-bottom:4px}
+.login-sub{font-size:13px;color:var(--text2);text-align:center;margin-bottom:24px}
+.login-error{font-size:12px;color:var(--red);background:var(--red-l);padding:8px 12px;border-radius:8px;margin-bottom:12px;display:none}
+.user-badge{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);cursor:pointer;transition:background .15s}
+.user-badge:hover{background:var(--bg3)}
+.user-badge-name{font-size:13px;font-weight:500}
+.user-badge-role{font-size:10px;font-weight:600;letter-spacing:0.05em;text-transform:uppercase;padding:2px 6px;border-radius:20px}
+.role-admin{background:#fef3c7;color:#92400e}
+.role-member{background:#dbeafe;color:#1e40af}
+/* User management in Settings */
+.user-row{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.user-row-info{flex:1}
+.user-row-name{font-size:13px;font-weight:500}
+.user-row-meta{font-size:11px;color:var(--text2);margin-top:2px}
+
 /* ── Setup screen ── */
 .setup-screen{
   position:fixed;inset:0;background:var(--bg3);
@@ -488,6 +508,21 @@ code{background:var(--bg2);border:1px solid var(--border);padding:1px 6px;border
   </div>
 </div>
 
+<!-- Login screen -->
+<div class="login-screen" id="login-screen" style="display:none">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+    <div class="login-title">VPass Funnel</div>
+    <div class="login-sub">Sign in to continue</div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group"><label>Username</label><input id="login-username" type="text" placeholder="Enter your username" autocomplete="username"></div>
+    <div class="form-group"><label>Password</label><input id="login-password" type="password" placeholder="Enter your password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <button class="btn btn-primary" onclick="doLogin()" style="width:100%;justify-content:center;padding:10px;font-size:14px">Sign in</button>
+  </div>
+</div>
+
 <!-- Loading overlay -->
 <div class="loading-overlay" id="loading" style="display:none">
   <div class="loading-spinner"><div class="spinner"></div><span id="loading-msg">Syncing with Google Sheets…</span></div>
@@ -520,10 +555,18 @@ code{background:var(--bg2);border:1px solid var(--border);padding:1px 6px;border
       <span class="sync-dot amber" id="sync-dot"></span>
       <span id="sync-label">Connecting…</span>
     </div>
+    <div class="user-badge" onclick="isAdmin()?setView('settings'):null" id="user-badge-el" title="Click to manage users">
+      <div class="avatar" id="user-avatar" style="background:#dbeafe;color:#1e40af;font-size:10px;font-weight:700">?</div>
+      <div>
+        <div class="user-badge-name" id="user-badge-name">Loading…</div>
+        <div class="user-badge-role" id="user-badge-role"></div>
+      </div>
+    </div>
     <button class="btn btn-sm" onclick="syncNow()" title="Refresh from Google Sheets">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
       Sync
     </button>
+    <button class="btn btn-sm" onclick="doLogout()" title="Sign out" style="color:var(--text2)">Sign out</button>
     <button class="btn btn-primary btn-sm" onclick="openAdd(null)">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       Add deal
@@ -668,6 +711,42 @@ function normalizeDealIds(){
 }
 
 let currentView = 'funnel';
+
+/* ─── Auth state ─── */
+const AUTH_KEY = 'vpass_session';
+const ADMIN_USERNAME = 'huyna7'; // Super admin username
+let currentUser = null; // { username, displayName, role:'admin'|'member', ownerIndex }
+
+function loadSession() {
+  try {
+    const s = localStorage.getItem(AUTH_KEY);
+    if (s) { currentUser = JSON.parse(s); return true; }
+  } catch(e) {}
+  return false;
+}
+function saveSession(user) {
+  currentUser = user;
+  localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+}
+function clearSession() {
+  currentUser = null;
+  localStorage.removeItem(AUTH_KEY);
+}
+function isAdmin() { return currentUser && currentUser.role === 'admin'; }
+function canEditDeal(d) {
+  if (!currentUser) return false;
+  if (isAdmin()) return true;
+  // Member chỉ sửa deal của mình
+  return Number(d.owner) === currentUser.ownerIndex;
+}
+
+// Simple hash function (không phải crypto-grade nhưng đủ cho internal tool)
+async function hashPassword(password) {
+  const msgBuffer = new TextEncoder().encode(password + 'vpass_salt_2025');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 let forecastFilters = { preset:'next30', from:'', to:'', stage:'all', stages:[], type:'all', types:[], owner:'all', owners:[] };
 let funnelFilters   = { preset:'all', from:'', to:'', stage:'all', stages:[], type:'all', types:[], owner:'all', owners:[] };
 function selectedValues(filters,key,legacyKey){ const vals=Array.isArray(filters[key])?filters[key]:[];if(vals.length)return vals.map(String);const legacy=filters[legacyKey];return legacy&&legacy!=='all'?[String(legacy)]:[];}
@@ -706,9 +785,13 @@ let syncTimer=null, isSaving=false;
 
 /* ─── Setup ─── */
 function checkSetup() {
-  // URL hardcoded — ẩn setup screen và khởi động thẳng
   document.getElementById('setup-screen').style.display='none';
-  initApp();
+  if (loadSession()) {
+    updateUserBadge();
+    initApp();
+  } else {
+    document.getElementById('login-screen').style.display='flex';
+  }
 }
 async function connectSheet() {
   const url = document.getElementById('setup-url').value.trim();
@@ -744,6 +827,11 @@ async function apiFetch(url,action,body) {
 }
 async function syncNow(silent) {
   if(!apiUrl)return;
+  // Nếu có checklist chưa save, push trước rồi mới sync
+  if(window._checklistDirty) {
+    await pushDeals();
+    window._checklistDirty = false;
+  }
   if(!silent)showLoading('Syncing…');
   setSyncStatus('amber','Syncing…');
   try {
@@ -949,7 +1037,7 @@ function renderFunnel(){
   const stageIndexes=selectedStageVals.length?selectedStageVals.map(v=>parseInt(v)).filter(v=>!isNaN(v)):STAGES.map((_,i)=>i);
   const cols=stageIndexes.map(si=>{
     const s=STAGES[si],sd=filtered.filter(d=>d.stage===si);
-    const cards=sd.map(d=>`<div class="deal-card" onclick="openEdit(${d.id})">
+    const cards=sd.map(d=>`<div class="deal-card" onclick="openEdit(${d.id})" style="${canEditDeal(d)?'':`opacity:.85`}">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:4px">
         <div class="deal-name" style="margin-bottom:0">${esc(d.name)}</div>
         <span ${pillStyle(d.type)}>${esc(d.type)}</span>
@@ -1355,7 +1443,34 @@ function resetProbabilities(){
 }
 function onProbSlider(i){ const el=document.getElementById('prob-slider-'+i),lbl=document.getElementById('prob-val-'+i);if(el&&lbl)lbl.textContent=el.value+'%'; }
 
+async function loadUsersForSettings() {
+  if (!isAdmin()) return;
+  try {
+    const res = await apiFetch(null, 'getUsers');
+    const el = document.getElementById('users-list');
+    if (!el) return;
+    if (!res.users || !res.users.length) { el.innerHTML='<div class="empty-state">No users yet.</div>'; return; }
+    el.innerHTML = res.users.map(u => `
+      <div class="user-row">
+        <div class="avatar" style="background:${u.role==='admin'?'#fef3c7':'#dbeafe'};color:${u.role==='admin'?'#92400e':'#1e40af'};flex-shrink:0">
+          ${u.displayName.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase()}
+        </div>
+        <div class="user-row-info">
+          <div class="user-row-name">${esc(u.displayName)} <span class="user-badge-role ${u.role==='admin'?'role-admin':'role-member'}">${u.role}</span></div>
+          <div class="user-row-meta">@${esc(u.username)} · Linked to: ${esc(state.owners[u.ownerIndex]||'—')}</div>
+        </div>
+        ${u.username !== currentUser.username ? `
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="resetPassword('${esc(u.username)}')">Reset pwd</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteUser('${esc(u.username)}')">Remove</button>
+        </div>` : '<span style="font-size:11px;color:var(--text3)">You</span>'}
+      </div>`).join('');
+  } catch(e) { /* silent */ }
+}
+
 function renderSettings(){
+  // Schedule user list load after DOM update
+  setTimeout(function(){ if(typeof renderSettingsPostLoad==='function') renderSettingsPostLoad(); }, 150);
   const sliders=STAGES.map((s,i)=>{
     const val=Math.round(STAGE_PROB[i]*100),disabled=(i===STAGE_WON||i===STAGE_REJECTED)?'disabled':'';
     return`<div style="margin-bottom:18px">
@@ -1382,6 +1497,13 @@ function renderSettings(){
         <button class="btn" onclick="resetProbabilities()">Reset to defaults</button>
       </div>
     </div>
+    ${isAdmin() ? `<div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <div class="section-title" style="margin-bottom:0">User management</div>
+        <button class="btn btn-sm btn-primary" onclick="openCreateUser()">+ Add user</button>
+      </div>
+      <div id="users-list"><div class="empty-state">Loading users…</div></div>
+    </div>` : ''}
     <div class="card">
       <div class="section-title">Google Sheets connection</div>
       <div class="sub-label">Connected to Google Sheets <span style="color:var(--green)">✓</span></div>
@@ -1485,6 +1607,10 @@ function resetChecklistTemplates() {
   toast('Reset to defaults.');
 }
 
+function renderSettingsPostLoad(){
+  if (isAdmin()) setTimeout(loadUsersForSettings, 100);
+}
+
 function disconnectSheet(){
   if(!confirm('Disconnect from Google Sheets? You can reconnect anytime.'))return;
   localStorage.removeItem(API_KEY);apiUrl='';
@@ -1494,9 +1620,12 @@ function disconnectSheet(){
 /* ─── MODALS ─── */
 function openAdd(stage){
   if(stage===null||stage===undefined)stage=0;
+  // Member: tự động assign deal cho mình
+  const autoOwner = isAdmin() ? null : (currentUser ? currentUser.ownerIndex : 0);
   const stageOpts=STAGES.map((s,i)=>`<option value="${i}" ${i==stage?'selected':''}>${s}</option>`).join('');
   const typeOpts=EVENT_TYPES.map(t=>`<option>${t}</option>`).join('');
-  const ownerOpts=state.owners.map((o,i)=>`<option value="${i}">${esc(o)}</option>`).join('');
+  const ownerOpts=state.owners.map((o,i)=>`<option value="${i}" ${autoOwner!==null&&autoOwner===i?'selected':''}>${esc(o)}</option>`).join('');
+  const ownerDisabled = !isAdmin() ? 'disabled style="opacity:.6"' : '';
   showModal(`<div class="modal">
     <h3>Add new deal</h3>
     <div class="form-group"><label>Event / client name</label><input id="f-name" placeholder="e.g. Saigon Jazz Night" autofocus></div>
@@ -1507,7 +1636,7 @@ function openAdd(stage){
     </div>
     <div class="form-row">
       <div class="form-group"><label>Stage</label><select id="f-stage">${stageOpts}</select></div>
-      <div class="form-group"><label>Assigned to</label><select id="f-owner">${ownerOpts}</select></div>
+      <div class="form-group"><label>Assigned to</label><select id="f-owner" ${ownerDisabled}>${ownerOpts}</select></div>
     </div>
     <div class="form-group"><label>Expected close date</label><input id="f-close" type="date" value="${offset(todayStr(),30)}"></div>
     <div class="form-group"><label>Notes</label><textarea id="f-note" placeholder="Context, next steps…"></textarea></div>
@@ -1581,9 +1710,9 @@ function openEdit(id){
       <div class="form-group" style="margin-bottom:0"><label>Notes</label><textarea id="f-note" style="min-height:120px">${esc(d.note||'')}</textarea></div>
     </div>
     <div class="modal-actions" style="margin-top:14px">
-      <button class="btn btn-danger" onclick="deleteDeal(${d.id})">Delete</button>
+      ${canEditDeal(d)?`<button class="btn btn-danger" onclick="deleteDeal(${d.id})">Delete</button>`:''}
       <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="saveDeal(${d.id})">Save changes</button>
+      ${canEditDeal(d)?`<button class="btn btn-primary" onclick="saveDeal(${d.id})">Save changes</button>`:`<span style="font-size:12px;color:var(--text2);padding:8px">View only — not your deal</span>`}
     </div>
   </div>`);
 }
@@ -1637,6 +1766,7 @@ async function saveDeal(id){
   if(!isNew){const i=state.deals.findIndex(d=>dealId(d)===id);if(i>=0)state.deals[i]=deal;else state.deals.push(deal);}
   else{state.deals.push(deal);}
   state.activities.unshift(act);
+  window._checklistDirty = false;
   closeModal();render();
   toast(isNew?'Deal added — saving…':'Deal updated — saving…');
   await pushDeals();await pushActivity(act);
@@ -1711,6 +1841,16 @@ function switchModalTab(tab, btn) {
   document.querySelectorAll('.modal-tab').forEach(b => b.classList.toggle('active', b===btn));
 }
 
+function markChecklistSaveBtn() {
+  // Đổi màu nút Save để nhắc user save sau khi thay đổi checklist
+  const btn = document.querySelector('.modal-actions .btn-primary');
+  if (btn) {
+    btn.style.background = 'var(--amber)';
+    btn.style.borderColor = 'var(--amber)';
+    btn.textContent = 'Save changes ●';
+  }
+}
+
 function toggleCheckItem(dId, itemIndex, checked) {
   const d = state.deals.find(x => dealId(x)===dId);
   if (!d) return;
@@ -1728,9 +1868,9 @@ function toggleCheckItem(dId, itemIndex, checked) {
   if (bar && prog) bar.style.width = prog.pct + '%';
   const pctEl = bar && bar.parentElement ? bar.parentElement.nextElementSibling : null;
   if (pctEl && prog) pctEl.textContent = prog.pct + '%';
-  // Auto-save sau 1s debounce
-  clearTimeout(window._checklistSaveTimer);
-  window._checklistSaveTimer = setTimeout(function() { pushDeals(); }, 1000);
+  // Mark checklist dirty — sẽ được lưu khi bấm Save changes
+  window._checklistDirty = true;
+  markChecklistSaveBtn();
 }
 
 function addCustomItem(dId) {
@@ -1753,8 +1893,8 @@ function addCustomItem(dId) {
     div.innerHTML = `<input type="checkbox" id="ck-${i}" onchange="toggleCheckItem(${dId},${i},this.checked)"><span class="ci-label">${esc(label)}</span><span class="ci-custom">Custom</span>`;
     wrap.appendChild(div);
   }
-  clearTimeout(window._checklistSaveTimer);
-  window._checklistSaveTimer = setTimeout(() => { pushDeals(); }, 1000);
+  window._checklistDirty = true;
+  markChecklistSaveBtn();
 }
 
 function removeCheckItem(dId, itemIndex) {
@@ -1773,8 +1913,8 @@ function removeCheckItem(dId, itemIndex) {
       <button onclick="removeCheckItem(${dealId},${i})" style="border:none;background:none;cursor:pointer;color:var(--text3);font-size:16px;padding:0 2px;line-height:1;flex-shrink:0">×</button>
     </div>`
   ).join('');
-  clearTimeout(window._checklistSaveTimer);
-  window._checklistSaveTimer = setTimeout(() => pushDeals(), 1000);
+  window._checklistDirty = true;
+  markChecklistSaveBtn();
 }
 
 function editCheckItemLabel(dId, itemIndex, spanEl) {
@@ -1794,7 +1934,7 @@ function editCheckItemLabel(dId, itemIndex, spanEl) {
       if (items[itemIndex]) items[itemIndex].label = newLabel;
       d.checklist = JSON.stringify(items);
       clearTimeout(window._checklistSaveTimer);
-      window._checklistSaveTimer = setTimeout(() => pushDeals(), 1000);
+      window._checklistDirty = true;
     }
     const span = document.createElement('span');
     span.className = 'ci-label';
@@ -1824,6 +1964,110 @@ function onModalStageChange(dId, newStage) {
 
 /* ─── Utils ─── */
 function esc(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ─── Auth functions ─── */
+async function doLogin() {
+  const username = document.getElementById('login-username').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.style.display = 'none';
+  if (!username || !password) {
+    errEl.textContent = 'Please enter username and password.';
+    errEl.style.display = 'block'; return;
+  }
+  showLoading('Signing in…');
+  try {
+    const hashed = await hashPassword(password);
+    const res = await apiFetch(null, 'login', { username, passwordHash: hashed });
+    if (res.ok && res.user) {
+      saveSession(res.user);
+      document.getElementById('login-screen').style.display = 'none';
+      hideLoading();
+      updateUserBadge();
+      initApp();
+    } else {
+      hideLoading();
+      errEl.textContent = res.error || 'Invalid username or password.';
+      errEl.style.display = 'block';
+    }
+  } catch(e) {
+    hideLoading();
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+}
+
+function doLogout() {
+  if (!confirm('Sign out?')) return;
+  clearSession();
+  location.reload();
+}
+
+function updateUserBadge() {
+  if (!currentUser) return;
+  const initials = currentUser.displayName.split(' ').map(w=>w[0]||'').join('').slice(0,2).toUpperCase();
+  const av = document.getElementById('user-avatar');
+  const nm = document.getElementById('user-badge-name');
+  const rl = document.getElementById('user-badge-role');
+  if (av) { av.textContent = initials; av.style.background = isAdmin()?'#fef3c7':'#dbeafe'; av.style.color = isAdmin()?'#92400e':'#1e40af'; }
+  if (nm) nm.textContent = currentUser.displayName;
+  if (rl) { rl.textContent = isAdmin()?'Admin':'Member'; rl.className = 'user-badge-role '+(isAdmin()?'role-admin':'role-member'); }
+}
+
+// User management (Admin only)
+async function createUser() {
+  const username = document.getElementById('new-username').value.trim().toLowerCase();
+  const displayName = document.getElementById('new-displayname').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const ownerIndex = parseInt(document.getElementById('new-owner').value);
+  if (!username || !displayName || !password) { toast('Please fill all fields.'); return; }
+  const passwordHash = await hashPassword(password);
+  showLoading('Creating user…');
+  try {
+    const res = await apiFetch(null, 'createUser', { username, displayName, passwordHash, role, ownerIndex });
+    if (res.ok) { hideLoading(); toast('User created!'); closeModal(); renderSettings(); }
+    else { hideLoading(); toast('Error: '+(res.error||'Unknown')); }
+  } catch(e) { hideLoading(); toast('Connection error.'); }
+}
+
+async function deleteUser(username) {
+  if (!confirm('Delete user "'+username+'"?')) return;
+  try {
+    const res = await apiFetch(null, 'deleteUser', { username });
+    if (res.ok) { toast('User deleted.'); renderSettings(); }
+    else toast('Error: '+(res.error||'Unknown'));
+  } catch(e) { toast('Connection error.'); }
+}
+
+async function resetPassword(username) {
+  const newPass = prompt('New password for "'+username+'":');
+  if (!newPass) return;
+  const passwordHash = await hashPassword(newPass);
+  try {
+    const res = await apiFetch(null, 'resetPassword', { username, passwordHash });
+    if (res.ok) toast('Password reset!');
+    else toast('Error: '+(res.error||'Unknown'));
+  } catch(e) { toast('Connection error.'); }
+}
+
+function openCreateUser() {
+  const ownerOpts = state.owners.map((o,i)=>`<option value="${i}">${esc(o)}</option>`).join('');
+  showModal(`<div class="modal">
+    <h3>Create new user</h3>
+    <div class="form-group"><label>Username</label><input id="new-username" placeholder="e.g. linhT" autocomplete="off"></div>
+    <div class="form-group"><label>Display name</label><input id="new-displayname" placeholder="e.g. Linh Trần"></div>
+    <div class="form-group"><label>Password</label><input id="new-password" type="password" placeholder="Set initial password"></div>
+    <div class="form-row">
+      <div class="form-group"><label>Role</label><select id="new-role"><option value="member">Member</option><option value="admin">Admin</option></select></div>
+      <div class="form-group"><label>Linked to owner</label><select id="new-owner">${ownerOpts}</select></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="createUser()">Create user</button>
+    </div>
+  </div>`);
+}
 
 /* ─── Boot ─── */
 checkSetup();
